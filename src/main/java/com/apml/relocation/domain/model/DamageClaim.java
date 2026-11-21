@@ -48,4 +48,9 @@ public class DamageClaim extends AuditableEntity {
 
     @Column(nullable = false)
     private LocalDateTime lodgedAt;
+
+    /** Count of PRE_PACKING / PACKED_AT_GODOWN photos on file for this item (or whole consignment). */
+    private Integer baselineEvidenceCount;
+    /** Count of UNPACKED_AT_DELIVERY photos on file for this item (or whole consignment). */
+    private Integer deliveryEvidenceCount;
 }

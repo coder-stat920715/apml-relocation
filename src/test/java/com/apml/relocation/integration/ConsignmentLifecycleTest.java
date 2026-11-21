@@ -15,7 +15,10 @@ import com.apml.relocation.domain.model.Consignment;
 import com.apml.relocation.domain.model.Enquiry;
 import com.apml.relocation.domain.model.SurveyItem;
 import com.apml.relocation.dto.ConsignmentDto;
+import com.apml.relocation.domain.enums.DeliveryMode;
+import com.apml.relocation.domain.enums.UnloadingBy;
 import com.apml.relocation.dto.EnquiryDto;
+import com.apml.relocation.dto.GcnDto;
 import com.apml.relocation.exception.ClaimRejectedException;
 import com.apml.relocation.exception.ComplianceViolationException;
 import com.apml.relocation.exception.InsufficientPaymentException;
@@ -24,6 +27,7 @@ import com.apml.relocation.service.ClaimService;
 import com.apml.relocation.service.ComplianceService;
 import com.apml.relocation.service.ConsignmentService;
 import com.apml.relocation.service.EnquiryService;
+import com.apml.relocation.service.GcnService;
 import com.apml.relocation.service.PaymentService;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -49,6 +53,7 @@ class ConsignmentLifecycleTest {
     @Autowired PaymentService payments;
     @Autowired ComplianceService compliance;
     @Autowired ClaimService claims;
+    @Autowired GcnService gcns;
     @Autowired Clock clock;
 
     // ------------------------------------------------------------------ helpers
@@ -61,7 +66,8 @@ class ConsignmentLifecycleTest {
         items.add(new EnquiryDto.ItemRequest(ItemCategory.CARTON_BOX, "Test Carton", 1, new BigDecimal("4.00"), false,
                 new BigDecimal("5000"), new BigDecimal("5000")));
         Enquiry e = enquiries.create(new EnquiryDto.CreateRequest(null, "Test Customer", "9876543210", "t@example.com",
-                null, true, "Kolkata", "Hyderabad", "Pickup address", "Delivery address", MovementType.HOUSEHOLD_TPT, 1500, items));
+                null, true, "Kolkata", "Hyderabad", "Pickup address", "Delivery address", MovementType.HOUSEHOLD_TPT, 1500, items,
+                null, null, null, null));
         enquiries.approve(e.getEnquiryNo());
         Consignment c = consignments.create(new ConsignmentDto.CreateRequest(e.getEnquiryNo(), null,
                 today.plusDays(packingInDays), today.plusDays(packingInDays + 1), new BigDecimal("10000.00"), false));
@@ -136,7 +142,10 @@ class ConsignmentLifecycleTest {
 
         pay(c, "5810.00");
         assertThat(consignments.markReadyForLoading(cfr).getStatus()).isEqualTo(ConsignmentStatus.READY_FOR_LOADING);
-        assertThat(consignments.dispatch(cfr).getStatus()).isEqualTo(ConsignmentStatus.IN_TRANSIT);
+        gcns.issue(cfr, new GcnDto.IssueRequest(null, null, null, null, DeliveryMode.DOOR_DELIVERY, UnloadingBy.BY_CARRIER,
+                null, null, null, null, null, null, null, null, null, null, null, null));
+        assertThat(consignments.dispatch(cfr, new GcnDto.DispatchRequest("WB03D1234", null, "SEAL-001")).getStatus())
+                .isEqualTo(ConsignmentStatus.IN_TRANSIT);
         assertThat(consignments.deliver(cfr).getDeliveredAt()).isNotNull();
     }
 
@@ -248,7 +257,9 @@ class ConsignmentLifecycleTest {
         consignments.verifyDocuments(cfr);
         pay(c, "9810.00");
         consignments.markReadyForLoading(cfr);
-        consignments.dispatch(cfr);
+        gcns.issue(cfr, new GcnDto.IssueRequest(null, null, null, null, DeliveryMode.DOOR_DELIVERY, UnloadingBy.BY_CARRIER,
+                null, null, null, null, null, null, null, null, null, null, null, null));
+        consignments.dispatch(cfr, new GcnDto.DispatchRequest("WB03D1234", null, "SEAL-002"));
         consignments.deliver(cfr);
 
         Long bike = item(c, true).getId();

@@ -58,4 +58,10 @@ public class Consignment extends AuditableEntity {
     private BigDecimal cancellationCharge;
     @Column(precision = 14, scale = 2)
     private BigDecimal refundAmount;
+
+    /** When the consignment reached the destination hub; starts the 1-day free demurrage period. */
+    private LocalDateTime arrivedAtDestinationHubAt;
+    private Integer demurrageDays;
+    @Column(precision = 14, scale = 2)
+    private BigDecimal demurrageAmount;
 }

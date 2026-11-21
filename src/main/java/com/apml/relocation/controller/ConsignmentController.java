@@ -3,6 +3,7 @@ package com.apml.relocation.controller;
 import com.apml.relocation.domain.model.CancellationPolicy;
 import com.apml.relocation.domain.model.Consignment;
 import com.apml.relocation.dto.ConsignmentDto;
+import com.apml.relocation.dto.GcnDto;
 import com.apml.relocation.dto.PaymentDto;
 import com.apml.relocation.mapper.ApmlMapper;
 import com.apml.relocation.service.ConsignmentService;
@@ -15,9 +16,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -49,7 +52,9 @@ public class ConsignmentController {
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Record a money receipt (ONLINE, NEFT_RTGS, IMPS, UPI, CHEQUE, CARD)")
     public PaymentDto.Response pay(@PathVariable String cfrNo, @Valid @RequestBody PaymentDto.Request r) {
-        return ApmlMapper.toResponse(payments.record(cfrNo, r.receiptNo(), r.amount(), r.mode(), r.referenceNo()));
+        return ApmlMapper.toResponse(payments.record(cfrNo, r.receiptNo(), r.amount(), r.mode(),
+                r.chequeOrTxnRef() != null ? r.chequeOrTxnRef() : r.referenceNo(), r.branchCode(), r.generatedByAgentId(),
+                r.verified()));
     }
 
     @GetMapping("/{cfrNo}/payments")
@@ -78,14 +83,29 @@ public class ConsignmentController {
         return view(service.markReadyForLoading(cfrNo));
     }
 
-    @PostMapping("/{cfrNo}/dispatch")
-    @Operation(summary = "READY_FOR_LOADING -> IN_TRANSIT")
-    public ConsignmentDto.Response dispatch(@PathVariable String cfrNo) {
-        return view(service.dispatch(cfrNo));
+    @RequestMapping(value = "/{cfrNo}/dispatch", method = {RequestMethod.PATCH, RequestMethod.POST})
+    @Operation(summary = "READY_FOR_LOADING -> IN_TRANSIT; optionally assign truckVehicleNo, sealNo, cubeNo "
+            + "(needs 100% payment and a complete Goods Consignment Note)")
+    public ConsignmentDto.Response dispatch(@PathVariable String cfrNo,
+                                            @RequestBody(required = false) GcnDto.DispatchRequest details) {
+        return view(service.dispatch(cfrNo, details));
+    }
+
+    @PostMapping("/{cfrNo}/hub-arrival")
+    @Operation(summary = "Record arrival at the destination hub (starts the 1-day free demurrage period)")
+    public ConsignmentDto.Response hubArrival(@PathVariable String cfrNo,
+                                              @RequestBody(required = false) ConsignmentDto.HubArrivalRequest r) {
+        return view(service.recordHubArrival(cfrNo, r == null ? null : r.arrivedAt()));
+    }
+
+    @PatchMapping("/{cfrNo}/payments/{receiptNo}/verify")
+    @Operation(summary = "Mark a receipt (e.g. a cleared cheque) as verified")
+    public PaymentDto.Response verifyReceipt(@PathVariable String cfrNo, @PathVariable String receiptNo) {
+        return ApmlMapper.toResponse(payments.verify(cfrNo, receiptNo));
     }
 
     @PostMapping("/{cfrNo}/deliver")
-    @Operation(summary = "IN_TRANSIT -> DELIVERED (stamps deliveredAt, starts claim window)")
+    @Operation(summary = "IN_TRANSIT -> DELIVERED: requires full verified payment proof; computes demurrage after hub arrival; starts claim window")
     public ConsignmentDto.Response deliver(@PathVariable String cfrNo) {
         return view(service.deliver(cfrNo));
     }

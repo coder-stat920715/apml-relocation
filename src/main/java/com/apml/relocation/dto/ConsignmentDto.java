@@ -27,7 +27,11 @@ public final class ConsignmentDto {
                            BigDecimal fovChargeAmount, BigDecimal gstAmount, BigDecimal totalPayableAmount,
                            BigDecimal amountPaid, BigDecimal balanceDue, BigDecimal requiredAdvance, boolean ownerRisk,
                            LocalDateTime deliveredAt, LocalDateTime cancelledAt, BigDecimal cancellationCharge,
-                           BigDecimal refundAmount) {}
+                           BigDecimal refundAmount, LocalDateTime arrivedAtDestinationHubAt, Integer demurrageDays,
+                           BigDecimal demurrageAmount) {}
+
+    /** arrivedAt is optional (defaults to now) so a hub scan can be back-dated. */
+    public record HubArrivalRequest(LocalDateTime arrivedAt) {}
 
     public record CancellationQuoteResponse(String cfrNo, long daysBeforePacking, BigDecimal penaltyPercent,
                                             BigDecimal deduction, BigDecimal refund) {}

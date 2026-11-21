@@ -4,9 +4,12 @@ import com.apml.relocation.domain.enums.ConsignmentStatus;
 import com.apml.relocation.domain.enums.EnquiryStatus;
 import com.apml.relocation.domain.model.CancellationPolicy;
 import com.apml.relocation.domain.model.Consignment;
+import com.apml.relocation.domain.model.DemurrageCalculator;
+import com.apml.relocation.domain.model.GoodsConsignmentNote;
 import com.apml.relocation.domain.model.Enquiry;
 import com.apml.relocation.domain.model.TransitLog;
 import com.apml.relocation.dto.ConsignmentDto;
+import com.apml.relocation.dto.GcnDto;
 import com.apml.relocation.exception.BusinessRuleException;
 import com.apml.relocation.exception.DuplicateResourceException;
 import com.apml.relocation.exception.InvalidStateTransitionException;
@@ -36,6 +39,7 @@ public class ConsignmentService {
     private final PricingService pricing;
     private final PaymentService payments;
     private final ComplianceService compliance;
+    private final GcnService gcn;
     private final ReferenceNumberGenerator numbers;
     private final Clock clock;
 
@@ -123,25 +127,76 @@ public class ConsignmentService {
 
     @Transactional
     public Consignment dispatch(String cfrNo) {
+        return dispatch(cfrNo, null);
+    }
+
+    /**
+     * READY_FOR_LOADING -> IN_TRANSIT. Requires 100% payment and a Goods Consignment Note carrying truck no., seal no.,
+     * liability section, delivery mode and billing type PAID (cube no. as well for CUBES shipments).
+     */
+    @Transactional
+    public Consignment dispatch(String cfrNo, GcnDto.DispatchRequest details) {
         Consignment c = get(cfrNo);
         requireTransition(c, ConsignmentStatus.IN_TRANSIT);
         payments.assertFullyPaid(c);
+        GoodsConsignmentNote g = gcn.applyDispatchDetails(c, details);
+        payments.syncBillingType(c);
+        gcn.assertDispatchReady(c, g);
+        gcn.markDispatched(g);
         c = move(c, ConsignmentStatus.IN_TRANSIT);
         TransitLog t = new TransitLog();
         t.setConsignment(c);
         t.setLocation(c.getEnquiry().getOriginCity());
-        t.setRemarks("Consignment loaded and dispatched");
+        t.setRemarks("Dispatched in truck " + g.getTruckVehicleNo() + ", seal " + g.getSealNo());
         t.setStatusAtLog(ConsignmentStatus.IN_TRANSIT);
         t.setLoggedAt(LocalDateTime.now(clock));
         transitLogs.save(t);
         return c;
     }
 
+    /** Records arrival at the destination hub; the 1-day free demurrage period starts here. */
+    @Transactional
+    public Consignment recordHubArrival(String cfrNo, LocalDateTime arrivedAt) {
+        Consignment c = get(cfrNo);
+        if (c.getStatus() != ConsignmentStatus.IN_TRANSIT) {
+            throw new BusinessRuleException("Hub arrival can only be recorded while the consignment is IN_TRANSIT");
+        }
+        if (c.getArrivedAtDestinationHubAt() != null) {
+            throw new BusinessRuleException("Hub arrival was already recorded at " + c.getArrivedAtDestinationHubAt());
+        }
+        LocalDateTime now = LocalDateTime.now(clock);
+        LocalDateTime when = arrivedAt == null ? now : arrivedAt;
+        if (when.isAfter(now)) throw new BusinessRuleException("arrivedAt cannot be in the future");
+        c.setArrivedAtDestinationHubAt(when);
+        c = consignments.save(c);
+        TransitLog t = new TransitLog();
+        t.setConsignment(c);
+        t.setLocation(c.getEnquiry().getDestinationCity() + " hub");
+        t.setRemarks("Arrived at destination hub");
+        t.setStatusAtLog(ConsignmentStatus.IN_TRANSIT);
+        t.setLoggedAt(when);
+        transitLogs.save(t);
+        return c;
+    }
+
+    /** IN_TRANSIT -> DELIVERED: needs payment proof; stamps deliveredAt and any demurrage due. */
     @Transactional
     public Consignment deliver(String cfrNo) {
         Consignment c = get(cfrNo);
         requireTransition(c, ConsignmentStatus.DELIVERED);
-        c.setDeliveredAt(LocalDateTime.now(clock));
+        payments.assertPaymentProof(c);
+        LocalDateTime now = LocalDateTime.now(clock);
+        c.setDeliveredAt(now);
+        if (c.getArrivedAtDestinationHubAt() != null) {
+            GoodsConsignmentNote g = gcn.find(c);
+            int packages = g == null || g.getTotalPackages() == null ? 0 : g.getTotalPackages();
+            var weight = g == null ? null : (g.getChargedWeightKg() != null ? g.getChargedWeightKg() : g.getActualWeightKg());
+            DemurrageCalculator.Result d = DemurrageCalculator.calculate(
+                    c.getArrivedAtDestinationHubAt().toLocalDate(), now.toLocalDate(), packages, weight);
+            c.setDemurrageDays((int) d.extraDays());
+            c.setDemurrageAmount(d.amount());
+            log.info("CFR {} delivered with {} extra day(s) of demurrage: INR {}", cfrNo, d.extraDays(), d.amount());
+        }
         return move(c, ConsignmentStatus.DELIVERED);
     }
 

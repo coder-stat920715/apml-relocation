@@ -41,7 +41,11 @@ public final class EnquiryDto {
             @NotBlank String deliveryAddress,
             @NotNull MovementType movementType,
             @Positive int distanceKm,
-            @NotEmpty @Valid List<ItemRequest> items) {}
+            @NotEmpty @Valid List<ItemRequest> items,
+            @Valid AddressDto consignorAddress,
+            @Valid AddressDto consigneeAddress,
+            String consigneeName,
+            String consigneeMobile) {}
 
     public record ItemResponse(Long id, ItemCategory category, String description, int quantity, BigDecimal volumeCft,
                                boolean crateRequired, BigDecimal declaredValue, BigDecimal riskCoverageAvailed) {}
@@ -50,5 +54,6 @@ public final class EnquiryDto {
                            String gstNo, boolean gstExempted, String originCity, String destinationCity,
                            String pickupAddress, String deliveryAddress, MovementType movementType, int distanceKm,
                            BigDecimal totalCft, LocalDate submittedOn, LocalDate validUntil, LocalDate moveDeadline,
-                           List<ItemResponse> items) {}
+                           List<ItemResponse> items, AddressDto consignorAddress, AddressDto consigneeAddress,
+                           String consigneeName, String consigneeMobile) {}
 }

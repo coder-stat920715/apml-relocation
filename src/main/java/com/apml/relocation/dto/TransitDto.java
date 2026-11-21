@@ -25,5 +25,6 @@ public final class TransitDto {
                                @NotNull @DecimalMin("0.01") BigDecimal claimedAmount) {}
 
     public record ClaimResponse(Long claimId, Long surveyItemId, DamageType damageType, BigDecimal claimedAmount,
-                                BigDecimal approvedAmount, ClaimStatus status, LocalDateTime lodgedAt) {}
+                                BigDecimal approvedAmount, ClaimStatus status, LocalDateTime lodgedAt,
+                                Integer baselineEvidenceCount, Integer deliveryEvidenceCount) {}
 }

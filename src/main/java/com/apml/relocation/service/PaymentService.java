@@ -1,6 +1,7 @@
 package com.apml.relocation.service;
 
 import com.apml.relocation.domain.enums.ConsignmentStatus;
+import com.apml.relocation.domain.enums.PaymentBillingType;
 import com.apml.relocation.domain.enums.PaymentMode;
 import com.apml.relocation.domain.model.CancellationPolicy;
 import com.apml.relocation.domain.model.Consignment;
@@ -10,6 +11,7 @@ import com.apml.relocation.exception.DuplicateResourceException;
 import com.apml.relocation.exception.InsufficientPaymentException;
 import com.apml.relocation.exception.ResourceNotFoundException;
 import com.apml.relocation.repository.ConsignmentRepository;
+import com.apml.relocation.repository.GoodsConsignmentNoteRepository;
 import com.apml.relocation.repository.MoneyReceiptRepository;
 import com.apml.relocation.util.ReferenceNumberGenerator;
 import java.math.BigDecimal;
@@ -32,12 +34,21 @@ public class PaymentService {
 
     private final MoneyReceiptRepository receipts;
     private final ConsignmentRepository consignments;
+    private final GoodsConsignmentNoteRepository gcns;
     private final ReferenceNumberGenerator numbers;
     private final Clock clock;
 
+    /** Backwards-compatible overload (no branch / agent / verification metadata). */
     @Transactional
-    public MoneyReceipt record(String cfrNo, String receiptNo, BigDecimal amount, PaymentMode mode, String referenceNo) {
-        Consignment c = consignments.findByCfrNo(cfrNo).orElseThrow(() -> new ResourceNotFoundException("Consignment", cfrNo));
+    public MoneyReceipt record(String cfrNo, String receiptNo, BigDecimal amount, PaymentMode mode, String chequeOrTxnRef) {
+        return record(cfrNo, receiptNo, amount, mode, chequeOrTxnRef, null, null, null);
+    }
+
+    /** Records one instalment; a consignment may carry any number of receipts until the balance reaches zero. */
+    @Transactional
+    public MoneyReceipt record(String cfrNo, String receiptNo, BigDecimal amount, PaymentMode mode, String chequeOrTxnRef,
+                               String branchCode, String generatedByAgentId, Boolean verified) {
+        Consignment c = load(cfrNo);
         if (c.getStatus() == ConsignmentStatus.CANCELLED || c.getStatus() == ConsignmentStatus.CLOSED) {
             throw new BusinessRuleException("Payments cannot be recorded against a " + c.getStatus() + " consignment");
         }
@@ -59,21 +70,40 @@ public class PaymentService {
         r.setConsignment(c);
         r.setAmount(amount.setScale(2, RoundingMode.HALF_UP));
         r.setMode(mode);
-        r.setReferenceNo(referenceNo);
+        r.setChequeOrTxnRef(chequeOrTxnRef);
+        r.setBranchCode(branchCode);
+        r.setGeneratedByAgentId(generatedByAgentId);
+        r.setVerified(verified == null ? Boolean.TRUE : verified);
         r.setReceivedAt(LocalDateTime.now(clock));
+        r = receipts.save(r);
         log.info("Receipt {} of INR {} ({}) recorded for {}", no, r.getAmount(), mode, cfrNo);
-        return receipts.save(r);
+        syncBillingType(c);
+        return r;
+    }
+
+    /** Marks a previously unverified receipt (e.g. a cheque awaiting clearance) as verified. */
+    @Transactional
+    public MoneyReceipt verify(String cfrNo, String receiptNo) {
+        Consignment c = load(cfrNo);
+        MoneyReceipt r = receipts.findByReceiptNo(receiptNo)
+                .filter(x -> x.getConsignment().getId().equals(c.getId()))
+                .orElseThrow(() -> new ResourceNotFoundException("Money receipt", receiptNo));
+        r.setVerified(Boolean.TRUE);
+        r = receipts.save(r);
+        syncBillingType(c);
+        return r;
     }
 
     @Transactional(readOnly = true)
     public List<MoneyReceipt> list(String cfrNo) {
-        Consignment c = consignments.findByCfrNo(cfrNo).orElseThrow(() -> new ResourceNotFoundException("Consignment", cfrNo));
-        return receipts.findByConsignmentOrderByReceivedAtAsc(c);
+        return receipts.findByConsignmentOrderByReceivedAtAscIdAsc(load(cfrNo));
     }
 
+    /** Sum of VERIFIED receipts only. */
     @Transactional(readOnly = true)
     public BigDecimal totalPaid(Consignment c) {
-        return receipts.findByConsignmentOrderByReceivedAtAsc(c).stream()
+        return receipts.findByConsignmentOrderByReceivedAtAscIdAsc(c).stream()
+                .filter(r -> Boolean.TRUE.equals(r.getVerified()))
                 .map(MoneyReceipt::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(2, RoundingMode.HALF_UP);
@@ -112,9 +142,36 @@ public class PaymentService {
         }
     }
 
+    /** Delivery gate: nothing outstanding and at least one verified receipt on file. */
+    @Transactional(readOnly = true)
+    public void assertPaymentProof(Consignment c) {
+        assertFullyPaid(c);
+        boolean anyVerified = receipts.findByConsignmentOrderByReceivedAtAscIdAsc(c).stream()
+                .anyMatch(r -> Boolean.TRUE.equals(r.getVerified()));
+        if (!anyVerified) {
+            throw new BusinessRuleException("Delivery requires at least one verified money receipt as payment proof");
+        }
+    }
+
+    /** Once 100% is settled the Goods Consignment Note (if issued) is switched to billing type PAID. */
+    @Transactional
+    public void syncBillingType(Consignment c) {
+        if (balanceDue(c).signum() > 0) return;
+        gcns.findByConsignment(c).ifPresent(g -> {
+            if (g.getPaymentBillingType() != PaymentBillingType.PAID) {
+                g.setPaymentBillingType(PaymentBillingType.PAID);
+                gcns.save(g);
+            }
+        });
+    }
+
     /** Rule 3: cancellation deduction / refund preview. */
     @Transactional(readOnly = true)
     public CancellationPolicy.Quote cancellationQuote(Consignment c) {
         return CancellationPolicy.quote(c.getPackingDate(), LocalDate.now(clock), c.getTotalPayableAmount(), totalPaid(c));
+    }
+
+    private Consignment load(String cfrNo) {
+        return consignments.findByCfrNo(cfrNo).orElseThrow(() -> new ResourceNotFoundException("Consignment", cfrNo));
     }
 }

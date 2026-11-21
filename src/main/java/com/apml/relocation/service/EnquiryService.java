@@ -48,6 +48,10 @@ public class EnquiryService {
         e.setMovementType(req.movementType());
         e.setDistanceKm(req.distanceKm());
         e.setSubmittedOn(LocalDate.now(clock));
+        e.setConsigneeName(req.consigneeName());
+        e.setConsigneeMobile(req.consigneeMobile());
+        if (req.consignorAddress() != null) e.setConsignorAddress(req.consignorAddress().toDomain());
+        if (req.consigneeAddress() != null) e.setConsigneeAddress(req.consigneeAddress().toDomain());
         for (EnquiryDto.ItemRequest ir : req.items()) {
             SurveyItem i = new SurveyItem();
             i.setCategory(ir.category());

@@ -6,6 +6,7 @@ import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface MoneyReceiptRepository extends JpaRepository<MoneyReceipt, Long> {
-    List<MoneyReceipt> findByConsignmentOrderByReceivedAtAsc(Consignment consignment);
+    List<MoneyReceipt> findByConsignmentOrderByReceivedAtAscIdAsc(Consignment consignment);
     boolean existsByReceiptNo(String receiptNo);
+    java.util.Optional<MoneyReceipt> findByReceiptNo(String receiptNo);
 }

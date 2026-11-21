@@ -3,14 +3,17 @@ package com.apml.relocation.service;
 import com.apml.relocation.domain.enums.ClaimStatus;
 import com.apml.relocation.domain.enums.DamageType;
 import com.apml.relocation.domain.enums.ItemCategory;
+import com.apml.relocation.domain.enums.MediaStage;
 import com.apml.relocation.domain.model.Consignment;
 import com.apml.relocation.domain.model.DamageClaim;
+import com.apml.relocation.domain.model.InspectionMedia;
 import com.apml.relocation.domain.model.MasterArticleDeclaration;
 import com.apml.relocation.domain.model.SurveyItem;
 import com.apml.relocation.exception.ClaimRejectedException;
 import com.apml.relocation.exception.ResourceNotFoundException;
 import com.apml.relocation.repository.ConsignmentRepository;
 import com.apml.relocation.repository.DamageClaimRepository;
+import com.apml.relocation.repository.InspectionMediaRepository;
 import com.apml.relocation.repository.MasterArticleDeclarationRepository;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -30,6 +33,7 @@ public class ClaimService {
     private final ConsignmentRepository consignments;
     private final MasterArticleDeclarationRepository declarations;
     private final DamageClaimRepository claims;
+    private final InspectionMediaRepository media;
     private final Clock clock;
 
     /**
@@ -37,6 +41,7 @@ public class ClaimService {
      *  - owner's-risk (no FOV) shipments are rejected;
      *  - vehicles: within 12h of delivery, exterior damage only; household goods / cartons: within 72h;
      *  - payout is capped at the cover declared for the item on the Master Article List (omitted items = 0).
+     * Pre-packing / packed / delivery photos on file are counted on the claim as adjudication evidence.
      */
     @Transactional
     public DamageClaim lodge(String cfrNo, Long surveyItemId, DamageType damageType, String description, BigDecimal claimed) {
@@ -70,6 +75,13 @@ public class ClaimService {
             throw new ClaimRejectedException("Item has no declared value / risk coverage on the Master Article List");
         }
 
+        List<InspectionMedia> evidence = media.findByConsignmentOrderByCapturedAtAsc(c).stream()
+                .filter(m -> m.getSurveyItem() == null || surveyItemId.equals(m.getSurveyItem().getId()))
+                .toList();
+        int baseline = (int) evidence.stream()
+                .filter(m -> m.getStage() == MediaStage.PRE_PACKING || m.getStage() == MediaStage.PACKED_AT_GODOWN).count();
+        int atDelivery = (int) evidence.stream().filter(m -> m.getStage() == MediaStage.UNPACKED_AT_DELIVERY).count();
+
         BigDecimal approved = claimed.min(cover);
         DamageClaim claim = new DamageClaim();
         claim.setConsignment(c);
@@ -80,7 +92,10 @@ public class ClaimService {
         claim.setApprovedAmount(approved);
         claim.setStatus(claimed.compareTo(cover) > 0 ? ClaimStatus.APPROVED_CAPPED : ClaimStatus.APPROVED);
         claim.setLodgedAt(now);
-        log.info("Claim for CFR {} item {} approved INR {} (claimed {}, cover {})", cfrNo, surveyItemId, approved, claimed, cover);
+        claim.setBaselineEvidenceCount(baseline);
+        claim.setDeliveryEvidenceCount(atDelivery);
+        log.info("Claim for CFR {} item {} approved INR {} (claimed {}, cover {}, evidence {}/{})",
+                cfrNo, surveyItemId, approved, claimed, cover, baseline, atDelivery);
         return claims.save(claim);
     }
 

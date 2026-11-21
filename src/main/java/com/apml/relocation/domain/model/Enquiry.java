@@ -2,8 +2,11 @@ package com.apml.relocation.domain.model;
 
 import com.apml.relocation.domain.enums.EnquiryStatus;
 import com.apml.relocation.domain.enums.MovementType;
+import jakarta.persistence.AttributeOverride;
+import jakarta.persistence.AttributeOverrides;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -44,6 +47,31 @@ public class Enquiry extends AuditableEntity {
     private String pickupAddress;
     @Column(length = 500)
     private String deliveryAddress;
+
+    private String consigneeName;
+    private String consigneeMobile;
+
+    @Embedded
+    @AttributeOverrides({
+            @AttributeOverride(name = "premiseOrRoomNo", column = @Column(name = "consignor_premise_room_no")),
+            @AttributeOverride(name = "buildingOrPgName", column = @Column(name = "consignor_building_pg")),
+            @AttributeOverride(name = "surveyOrPlotNo", column = @Column(name = "consignor_survey_plot_no")),
+            @AttributeOverride(name = "locality", column = @Column(name = "consignor_locality")),
+            @AttributeOverride(name = "city", column = @Column(name = "consignor_city")),
+            @AttributeOverride(name = "state", column = @Column(name = "consignor_state")),
+            @AttributeOverride(name = "pincode", column = @Column(name = "consignor_pincode", length = 10))})
+    private Address consignorAddress;
+
+    @Embedded
+    @AttributeOverrides({
+            @AttributeOverride(name = "premiseOrRoomNo", column = @Column(name = "consignee_premise_room_no")),
+            @AttributeOverride(name = "buildingOrPgName", column = @Column(name = "consignee_building_pg")),
+            @AttributeOverride(name = "surveyOrPlotNo", column = @Column(name = "consignee_survey_plot_no")),
+            @AttributeOverride(name = "locality", column = @Column(name = "consignee_locality")),
+            @AttributeOverride(name = "city", column = @Column(name = "consignee_city")),
+            @AttributeOverride(name = "state", column = @Column(name = "consignee_state")),
+            @AttributeOverride(name = "pincode", column = @Column(name = "consignee_pincode", length = 10))})
+    private Address consigneeAddress;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)

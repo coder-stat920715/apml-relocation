@@ -35,7 +35,14 @@ public class MoneyReceipt extends AuditableEntity {
     @Column(nullable = false, length = 15)
     private PaymentMode mode;
 
-    private String referenceNo;
+    /** Cheque number or transaction reference, e.g. APMEB-5093071311. */
+    private String chequeOrTxnRef;
+    /** Issuing branch code, e.g. KOL. */
+    private String branchCode;
+    /** Agent who generated the receipt, e.g. APM11879. */
+    private String generatedByAgentId;
+    /** Only verified receipts count towards the amount paid. */
+    private Boolean verified = Boolean.TRUE;
 
     @Column(nullable = false)
     private LocalDateTime receivedAt;

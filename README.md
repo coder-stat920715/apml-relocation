@@ -28,3 +28,17 @@ Swagger UI: http://localhost:8080/swagger-ui.html
 - Cancellation after the packing date is refused.
 - Seed advance of INR 700 is below the 10% threshold (INR 722.50 on INR 7,225), so the seeded CFR stays QUOTED.
 - Aadhaar/PAN numbers are stored as submitted; encrypt at rest before real use.
+
+## Goods Consignment Note, dispatch, demurrage (v1.1)
+- `POST  /api/v1/consignments/{cfr}/gcn` issue (201) / update (200) the GCN; `GET` same path to read it.
+  Insured consignments (FOV cover > 0, not owner's risk) are forced to `SECTION_11_INSURED_RISK` with `declaredGoodsValue`.
+- `PATCH /api/v1/consignments/{cfr}/dispatch` (legacy `POST` still works) with optional `truckVehicleNo`, `sealNo`, `cubeNo`.
+  Gate: 100% paid + GCN with truck, seal, liability section, delivery mode and billing `PAID` (cube no. for CUBES).
+- `POST /api/v1/consignments/{cfr}/hub-arrival` then `POST .../deliver`: delivery needs full verified payment proof;
+  demurrage = max(5 x packages x extraDays, 5 x quintals x extraDays) after 1 free day (stored on the consignment,
+  separate from `totalPayableAmount`).
+- `POST/GET /api/v1/consignments/{cfr}/media` pre-packing / packed / delivery photo references (counted on damage claims).
+- Receipts carry `chequeOrTxnRef`, `branchCode`, `generatedByAgentId`, `verified`; only verified receipts count as paid.
+- Enquiries accept structured `consignorAddress` / `consigneeAddress`.
+- Seed `CFRKOL262706738` is now READY_FOR_LOADING with receipts 700 + 6,300 and GCN S.No. 1354001.
+- With `ddl-auto: update` on an existing PostgreSQL database, new columns are nullable; use Flyway/Liquibase for production.

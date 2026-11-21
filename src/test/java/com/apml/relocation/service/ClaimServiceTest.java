@@ -17,6 +17,7 @@ import com.apml.relocation.domain.model.SurveyItem;
 import com.apml.relocation.exception.ClaimRejectedException;
 import com.apml.relocation.repository.ConsignmentRepository;
 import com.apml.relocation.repository.DamageClaimRepository;
+import com.apml.relocation.repository.InspectionMediaRepository;
 import com.apml.relocation.repository.MasterArticleDeclarationRepository;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -43,12 +44,13 @@ class ClaimServiceTest {
     @Mock ConsignmentRepository consignments;
     @Mock MasterArticleDeclarationRepository declarations;
     @Mock DamageClaimRepository claimRepo;
+    @Mock InspectionMediaRepository mediaRepo;
 
     private ClaimService service;
 
     @BeforeEach
     void setUp() {
-        service = new ClaimService(consignments, declarations, claimRepo, Clock.fixed(NOW.atZone(ZONE).toInstant(), ZONE));
+        service = new ClaimService(consignments, declarations, claimRepo, mediaRepo, Clock.fixed(NOW.atZone(ZONE).toInstant(), ZONE));
         when(claimRepo.save(any(DamageClaim.class))).thenAnswer(i -> i.getArgument(0));
     }
 

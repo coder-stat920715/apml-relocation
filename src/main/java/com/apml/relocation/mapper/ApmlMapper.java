@@ -10,13 +10,21 @@ import com.apml.relocation.domain.model.MoneyReceipt;
 import com.apml.relocation.domain.model.SurveyItem;
 import com.apml.relocation.domain.model.TransitLog;
 import com.apml.relocation.domain.model.VehicleChecklist;
+import com.apml.relocation.domain.enums.PackingMaterial;
+import com.apml.relocation.domain.model.GoodsConsignmentNote;
+import com.apml.relocation.domain.model.InspectionMedia;
+import com.apml.relocation.dto.AddressDto;
 import com.apml.relocation.dto.ComplianceDto;
+import com.apml.relocation.dto.GcnDto;
+import com.apml.relocation.dto.MediaDto;
 import com.apml.relocation.dto.ConsignmentDto;
 import com.apml.relocation.dto.EnquiryDto;
 import com.apml.relocation.dto.PaymentDto;
 import com.apml.relocation.dto.TransitDto;
 import com.apml.relocation.util.MaskingUtil;
 import java.math.BigDecimal;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 public final class ApmlMapper {
     private ApmlMapper() {}
@@ -30,7 +38,9 @@ public final class ApmlMapper {
         return new EnquiryDto.Response(e.getEnquiryNo(), e.getStatus(), e.getCustomerName(), e.getMobile(), e.getEmail(),
                 e.getGstNo(), e.isGstExempted(), e.getOriginCity(), e.getDestinationCity(), e.getPickupAddress(),
                 e.getDeliveryAddress(), e.getMovementType(), e.getDistanceKm(), e.getTotalCft(), e.getSubmittedOn(),
-                e.getValidUntil(), e.getMoveDeadline(), e.getItems().stream().map(ApmlMapper::toResponse).toList());
+                e.getValidUntil(), e.getMoveDeadline(), e.getItems().stream().map(ApmlMapper::toResponse).toList(),
+                AddressDto.from(e.getConsignorAddress()), AddressDto.from(e.getConsigneeAddress()),
+                e.getConsigneeName(), e.getConsigneeMobile());
     }
 
     public static ConsignmentDto.Response toResponse(Consignment c, BigDecimal paid, BigDecimal requiredAdvance) {
@@ -38,12 +48,13 @@ public final class ApmlMapper {
                 c.getLoadingDate(), c.getEnquiry().getTotalCft(), c.getGrossFreightAmount(), c.getFovChargeAmount(),
                 c.getGstAmount(), c.getTotalPayableAmount(), paid, c.getTotalPayableAmount().subtract(paid),
                 requiredAdvance, c.isOwnerRisk(), c.getDeliveredAt(), c.getCancelledAt(), c.getCancellationCharge(),
-                c.getRefundAmount());
+                c.getRefundAmount(), c.getArrivedAtDestinationHubAt(), c.getDemurrageDays(), c.getDemurrageAmount());
     }
 
     public static PaymentDto.Response toResponse(MoneyReceipt r) {
         return new PaymentDto.Response(r.getReceiptNo(), r.getConsignment().getCfrNo(), r.getAmount(), r.getMode(),
-                r.getReferenceNo(), r.getReceivedAt());
+                r.getChequeOrTxnRef(), r.getChequeOrTxnRef(), r.getBranchCode(), r.getGeneratedByAgentId(),
+                Boolean.TRUE.equals(r.getVerified()), r.getReceivedAt());
     }
 
     public static ComplianceDto.KycResponse toResponse(KycDocument d) {
@@ -72,6 +83,23 @@ public final class ApmlMapper {
 
     public static TransitDto.ClaimResponse toResponse(DamageClaim c) {
         return new TransitDto.ClaimResponse(c.getId(), c.getSurveyItem().getId(), c.getDamageType(), c.getClaimedAmount(),
-                c.getApprovedAmount(), c.getStatus(), c.getLodgedAt());
+                c.getApprovedAmount(), c.getStatus(), c.getLodgedAt(), c.getBaselineEvidenceCount(), c.getDeliveryEvidenceCount());
+    }
+
+    public static GcnDto.Response toResponse(GoodsConsignmentNote g) {
+        Map<PackingMaterial, Integer> returnable = new LinkedHashMap<>();
+        g.getPackingMaterialsUsed().forEach((k, v) -> { if (k.isReturnable()) returnable.put(k, v); });
+        return new GcnDto.Response(g.getConsignment().getCfrNo(), g.getGcnSerialNo(), g.getGcnDate(), g.getIbaCode(),
+                g.getCarriageActRegNo(), g.getGstin(), g.getSacCode(), g.getCfrReferenceNo(), g.getLiabilitySection(),
+                g.getDeclaredGoodsValue(), g.getDeliveryMode(), g.getUnloadingBy(), g.getPaymentBillingType(),
+                g.getTotalPackages(), g.getActualWeightKg(), g.getChargedWeightKg(), g.getLengthFt(), g.getBreadthFt(),
+                g.getHeightFt(), new LinkedHashMap<>(g.getPackingMaterialsUsed()), returnable, g.getTruckVehicleNo(),
+                g.getCubeNo(), g.getSealNo(), g.getDispatchedAt());
+    }
+
+    public static MediaDto.Response toResponse(InspectionMedia m) {
+        return new MediaDto.Response(m.getId(), m.getStage(), m.getSurveyItem() == null ? null : m.getSurveyItem().getId(),
+                m.getSurveyItem() == null ? null : m.getSurveyItem().getDescription(), m.getFileReference(),
+                m.getCapturedAt(), m.getRemarks());
     }
 }
