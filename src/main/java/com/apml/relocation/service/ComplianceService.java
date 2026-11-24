@@ -110,13 +110,13 @@ public class ComplianceService {
         Consignment c = load(cfrNo);
         assertEditable(c);
         String normalized = number == null ? null : number.replaceAll("\\s", "").toUpperCase();
-        switch (type) {
-            case AADHAAR -> require(normalized != null && AADHAAR.matcher(normalized).matches(), "Aadhaar must be a 12-digit number");
-            case PAN -> require(normalized != null && PAN.matcher(normalized).matches(), "PAN must match format ABCDE1234F");
-            case PASSPORT_PHOTOS -> {
-                int needed = requiredPhotos(c);
-                require(photoCount != null && photoCount >= needed, "At least " + needed + " passport photos are required");
-            }
+        if (type == KycType.AADHAAR) {
+            require(normalized != null && AADHAAR.matcher(normalized).matches(), "Aadhaar must be a 12-digit number");
+        } else if (type == KycType.PAN) {
+            require(normalized != null && PAN.matcher(normalized).matches(), "PAN must match format ABCDE1234F");
+        } else {
+            int needed = requiredPhotos(c);
+            require(photoCount != null && photoCount >= needed, "At least " + needed + " passport photos are required");
         }
         KycDocument d = kycDocuments.findByConsignmentAndType(c, type).orElseGet(KycDocument::new);
         d.setConsignment(c);
