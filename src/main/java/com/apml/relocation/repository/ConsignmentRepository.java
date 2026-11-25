@@ -7,4 +7,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface ConsignmentRepository extends JpaRepository<Consignment, Long> {
     Optional<Consignment> findByCfrNo(String cfrNo);
     boolean existsByCfrNo(String cfrNo);
+    Optional<Consignment> findByEnquiry(com.apml.relocation.domain.model.Enquiry enquiry);
 }

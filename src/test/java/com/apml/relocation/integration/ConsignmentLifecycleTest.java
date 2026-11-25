@@ -27,8 +27,10 @@ import com.apml.relocation.service.ClaimService;
 import com.apml.relocation.service.ComplianceService;
 import com.apml.relocation.service.ConsignmentService;
 import com.apml.relocation.service.EnquiryService;
+import com.apml.relocation.service.DeliveryPodService;
 import com.apml.relocation.service.GcnService;
 import com.apml.relocation.service.PaymentService;
+import com.apml.relocation.support.TestData;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -55,6 +57,7 @@ class ConsignmentLifecycleTest {
     @Autowired ClaimService claims;
     @Autowired GcnService gcns;
     @Autowired Clock clock;
+    @Autowired DeliveryPodService pods;
 
     // ------------------------------------------------------------------ helpers
 
@@ -146,6 +149,7 @@ class ConsignmentLifecycleTest {
                 null, null, null, null, null, null, null, null, null, null, null, null));
         assertThat(consignments.dispatch(cfr, new GcnDto.DispatchRequest("WB03D1234", null, "SEAL-001")).getStatus())
                 .isEqualTo(ConsignmentStatus.IN_TRANSIT);
+        pods.record(cfr, TestData.completePod());
         assertThat(consignments.deliver(cfr).getDeliveredAt()).isNotNull();
     }
 
@@ -260,6 +264,7 @@ class ConsignmentLifecycleTest {
         gcns.issue(cfr, new GcnDto.IssueRequest(null, null, null, null, DeliveryMode.DOOR_DELIVERY, UnloadingBy.BY_CARRIER,
                 null, null, null, null, null, null, null, null, null, null, null, null));
         consignments.dispatch(cfr, new GcnDto.DispatchRequest("WB03D1234", null, "SEAL-002"));
+        pods.record(cfr, TestData.completePod());
         consignments.deliver(cfr);
 
         Long bike = item(c, true).getId();

@@ -8,17 +8,21 @@ import com.apml.relocation.domain.enums.PaymentMode;
 import com.apml.relocation.domain.enums.UnloadingBy;
 import com.apml.relocation.domain.model.ArticleLine;
 import com.apml.relocation.domain.model.Consignment;
+import com.apml.relocation.domain.model.Enquiry;
 import com.apml.relocation.dto.ConsignmentDto;
 import com.apml.relocation.dto.EnquiryDto;
 import com.apml.relocation.dto.GcnDto;
 import com.apml.relocation.service.ComplianceService;
 import com.apml.relocation.service.ConsignmentService;
+import com.apml.relocation.service.DeliveryPodService;
 import com.apml.relocation.service.EnquiryService;
 import com.apml.relocation.service.GcnService;
 import com.apml.relocation.service.PaymentService;
+import com.apml.relocation.support.TestData;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,12 +37,11 @@ public class ScenarioSupport {
     @Autowired PaymentService payments;
     @Autowired ComplianceService compliance;
     @Autowired GcnService gcns;
+    @Autowired DeliveryPodService pods;
     @Autowired Clock clock;
 
-    /** A freshly quoted consignment (status QUOTED). */
-    public Consignment quoted() {
-        LocalDate today = LocalDate.now(clock);
-        var e = enquiries.create(new EnquiryDto.CreateRequest(null, "Scenario Customer", "9876543210", "s@example.com", null, true,
+    private Enquiry approvedEnquiry() {
+        Enquiry e = enquiries.create(new EnquiryDto.CreateRequest(null, "Scenario Customer", "9876543210", "s@example.com", null, true,
                 "Kolkata", "Hyderabad", "Pickup", "Delivery", MovementType.HOUSEHOLD_TPT, 1500,
                 List.of(new EnquiryDto.ItemRequest(ItemCategory.TWO_WHEELER, "Scenario Bike", 1, new BigDecimal("37.05"), true,
                                 new BigDecimal("5000"), new BigDecimal("5000")),
@@ -46,6 +49,18 @@ public class ScenarioSupport {
                                 new BigDecimal("5000"), new BigDecimal("5000"))),
                 null, null, null, null));
         enquiries.approve(e.getEnquiryNo());
+        return e;
+    }
+
+    /** An approved enquiry that has not been turned into a consignment yet. */
+    public String enquiryOnly() {
+        return approvedEnquiry().getEnquiryNo();
+    }
+
+    /** A freshly quoted consignment (status QUOTED). */
+    public Consignment quoted() {
+        LocalDate today = LocalDate.now(clock);
+        Enquiry e = approvedEnquiry();
         Consignment c = consignments.create(new ConsignmentDto.CreateRequest(e.getEnquiryNo(), null,
                 today.plusDays(10), today.plusDays(11), new BigDecimal("6775.00"), false));
         return consignments.get(c.getCfrNo());
@@ -70,5 +85,29 @@ public class ScenarioSupport {
         gcns.issue(cfr, new GcnDto.IssueRequest(null, null, null, null, DeliveryMode.DOOR_DELIVERY, UnloadingBy.BY_CARRIER, null,
                 2, new BigDecimal("44.00"), new BigDecimal("100.00"), null, null, null, null, null, null, null, null));
         return cfr;
+    }
+
+    /** IN_TRANSIT: dispatched with truck and seal, digital GC number auto-generated, no scan events yet. */
+    public String inTransit() {
+        String cfr = readyWithGcn();
+        consignments.dispatch(cfr, new GcnDto.DispatchRequest("WB03D1234", null, "SEAL-5001"));
+        return cfr;
+    }
+
+    /** DELIVERED after the goods sat at the destination hub for the given number of days. */
+    public String delivered(int daysAtHub) {
+        String cfr = inTransit();
+        consignments.recordHubArrival(cfr, LocalDateTime.now(clock).minusDays(daysAtHub));
+        pods.record(cfr, TestData.completePod());
+        consignments.deliver(cfr);
+        return cfr;
+    }
+
+    public String digitalGcNoOf(String cfrNo) {
+        return gcns.get(cfrNo).getDigitalGcNo();
+    }
+
+    public Long gcnSerialNoOf(String cfrNo) {
+        return gcns.get(cfrNo).getGcnSerialNo();
     }
 }

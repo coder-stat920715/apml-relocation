@@ -8,6 +8,7 @@ import com.apml.relocation.domain.model.Consignment;
 import com.apml.relocation.domain.model.Enquiry;
 import com.apml.relocation.domain.model.GoodsConsignmentNote;
 import com.apml.relocation.domain.model.SurveyItem;
+import com.apml.relocation.dto.PodDto;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -73,6 +74,12 @@ public final class TestData {
         c.setGstAmount(BigDecimal.ZERO);
         c.setTotalPayableAmount(new BigDecimal("7000.00"));
         return c;
+    }
+
+    /** A fully ticked handover checklist, signed by the consignee. */
+    public static PodDto.Request completePod() {
+        return new PodDto.Request(true, true, true, true, "1234 5678 9012", true, true, "Souptik Tat", null,
+                "Delivered in good condition", false);
     }
 
     public static GoodsConsignmentNote gcn(Consignment consignment) {

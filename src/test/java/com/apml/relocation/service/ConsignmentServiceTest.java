@@ -3,6 +3,7 @@ package com.apml.relocation.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -10,6 +11,7 @@ import static org.mockito.Mockito.when;
 import com.apml.relocation.domain.enums.ConsignmentStatus;
 import com.apml.relocation.domain.enums.EnquiryStatus;
 import com.apml.relocation.domain.enums.ItemCategory;
+import com.apml.relocation.domain.enums.TrackingEventCode;
 import com.apml.relocation.domain.model.CancellationPolicy;
 import com.apml.relocation.domain.model.Consignment;
 import com.apml.relocation.domain.model.Enquiry;
@@ -17,6 +19,7 @@ import com.apml.relocation.domain.model.GoodsConsignmentNote;
 import com.apml.relocation.domain.model.TransitLog;
 import com.apml.relocation.dto.ConsignmentDto;
 import com.apml.relocation.dto.GcnDto;
+import com.apml.relocation.dto.PodDto;
 import com.apml.relocation.exception.BusinessRuleException;
 import com.apml.relocation.exception.DuplicateResourceException;
 import com.apml.relocation.exception.InvalidStateTransitionException;
@@ -51,6 +54,8 @@ class ConsignmentServiceTest {
     @Mock PaymentService payments;
     @Mock ComplianceService compliance;
     @Mock GcnService gcn;
+    @Mock DeliveryPodService pods;
+    @Mock TrackingEventService trackingEvents;
     @Mock ReferenceNumberGenerator numbers;
 
     private ConsignmentService service;
@@ -60,7 +65,7 @@ class ConsignmentServiceTest {
     @BeforeEach
     void setUp() {
         service = new ConsignmentService(consignments, enquiries, transitLogs, new PricingService(new BigDecimal("0.05")),
-                payments, compliance, gcn, numbers, TestData.clock());
+                payments, compliance, gcn, pods, trackingEvents, numbers, TestData.clock());
         enquiry = TestData.enquiry(TestData.item(1, ItemCategory.TWO_WHEELER, "5000", "5000"),
                 TestData.item(2, ItemCategory.CARTON_BOX, "5000", "5000"));
         consignment = TestData.consignment(ConsignmentStatus.QUOTED, enquiry);
@@ -383,5 +388,44 @@ class ConsignmentServiceTest {
     void cancelRejectsNonCancellableStatus() {
         consignment.setStatus(ConsignmentStatus.DELIVERED);
         assertThrows(InvalidStateTransitionException.class, () -> service.cancel(CFR, "late"));
+    }
+
+    // ------------------------------------------------------------------ POD gate and tracking events
+
+    @Test
+    void deliverRunsPaymentAndPodGatesAndAppendsTheDeliveredEvent() {
+        consignment.setStatus(ConsignmentStatus.IN_TRANSIT);
+        service.deliver(CFR);
+        verify(payments).assertPaymentProof(consignment);
+        verify(pods).assertDeliverable(consignment);
+        verify(pods, never()).record(any(Consignment.class), any(PodDto.Request.class));
+        verify(trackingEvents).append(eq(consignment), eq(TrackingEventCode.DELIVERED), eq(TestData.NOW), eq(null));
+    }
+
+    @Test
+    void deliverRecordsTheSuppliedPodBeforeCheckingIt() {
+        consignment.setStatus(ConsignmentStatus.IN_TRANSIT);
+        PodDto.Request pod = TestData.completePod();
+        TrackingEventService.Details details = new TrackingEventService.Details("HYDERABAD", "Delivered", null, "APM1");
+        service.deliver(CFR, pod, details);
+        verify(pods).record(consignment, pod);
+        verify(trackingEvents).append(consignment, TrackingEventCode.DELIVERED, TestData.NOW, details);
+    }
+
+    @Test
+    void deliverWithDetailsOnlyUsesTheMiddleOverload() {
+        consignment.setStatus(ConsignmentStatus.IN_TRANSIT);
+        TrackingEventService.Details details = TrackingEventService.Details.EMPTY;
+        assertThat(service.deliver(CFR, details).getStatus()).isEqualTo(ConsignmentStatus.DELIVERED);
+        verify(trackingEvents).append(consignment, TrackingEventCode.DELIVERED, TestData.NOW, details);
+    }
+
+    @Test
+    void hubArrivalAppendsAnArrivedAtDestinationHubEvent() {
+        consignment.setStatus(ConsignmentStatus.IN_TRANSIT);
+        LocalDateTime earlier = TestData.NOW.minusHours(5);
+        TrackingEventService.Details details = new TrackingEventService.Details(null, null, null, "APM1");
+        service.recordHubArrival(CFR, earlier, details);
+        verify(trackingEvents).append(consignment, TrackingEventCode.ARRIVED_DESTINATION_HUB, earlier, details);
     }
 }

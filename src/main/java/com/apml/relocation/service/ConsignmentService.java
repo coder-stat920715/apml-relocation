@@ -2,6 +2,7 @@ package com.apml.relocation.service;
 
 import com.apml.relocation.domain.enums.ConsignmentStatus;
 import com.apml.relocation.domain.enums.EnquiryStatus;
+import com.apml.relocation.domain.enums.TrackingEventCode;
 import com.apml.relocation.domain.model.CancellationPolicy;
 import com.apml.relocation.domain.model.Consignment;
 import com.apml.relocation.domain.model.DemurrageCalculator;
@@ -10,6 +11,7 @@ import com.apml.relocation.domain.model.Enquiry;
 import com.apml.relocation.domain.model.TransitLog;
 import com.apml.relocation.dto.ConsignmentDto;
 import com.apml.relocation.dto.GcnDto;
+import com.apml.relocation.dto.PodDto;
 import com.apml.relocation.exception.BusinessRuleException;
 import com.apml.relocation.exception.DuplicateResourceException;
 import com.apml.relocation.exception.InvalidStateTransitionException;
@@ -40,6 +42,8 @@ public class ConsignmentService {
     private final PaymentService payments;
     private final ComplianceService compliance;
     private final GcnService gcn;
+    private final DeliveryPodService pods;
+    private final TrackingEventService trackingEvents;
     private final ReferenceNumberGenerator numbers;
     private final Clock clock;
 
@@ -157,6 +161,11 @@ public class ConsignmentService {
     /** Records arrival at the destination hub; the 1-day free demurrage period starts here. */
     @Transactional
     public Consignment recordHubArrival(String cfrNo, LocalDateTime arrivedAt) {
+        return recordHubArrival(cfrNo, arrivedAt, null);
+    }
+
+    @Transactional
+    public Consignment recordHubArrival(String cfrNo, LocalDateTime arrivedAt, TrackingEventService.Details details) {
         Consignment c = get(cfrNo);
         if (c.getStatus() != ConsignmentStatus.IN_TRANSIT) {
             throw new BusinessRuleException("Hub arrival can only be recorded while the consignment is IN_TRANSIT");
@@ -176,15 +185,34 @@ public class ConsignmentService {
         t.setStatusAtLog(ConsignmentStatus.IN_TRANSIT);
         t.setLoggedAt(when);
         transitLogs.save(t);
+        trackingEvents.append(c, TrackingEventCode.ARRIVED_DESTINATION_HUB, when, details);
         return c;
     }
 
-    /** IN_TRANSIT -> DELIVERED: needs payment proof; stamps deliveredAt and any demurrage due. */
     @Transactional
     public Consignment deliver(String cfrNo) {
+        return deliver(cfrNo, null, null);
+    }
+
+    @Transactional
+    public Consignment deliver(String cfrNo, TrackingEventService.Details details) {
+        return deliver(cfrNo, null, details);
+    }
+
+    /**
+     * IN_TRANSIT -> DELIVERED. Needs verified payment proof and a complete delivery POD (recorded from the optional
+     * request or beforehand). Stamps deliveredAt (opening the 12h / 72h claim windows), computes demurrage and
+     * appends the DELIVERED tracking event.
+     */
+    @Transactional
+    public Consignment deliver(String cfrNo, PodDto.Request pod, TrackingEventService.Details details) {
         Consignment c = get(cfrNo);
         requireTransition(c, ConsignmentStatus.DELIVERED);
+        if (pod != null) {
+            pods.record(c, pod);
+        }
         payments.assertPaymentProof(c);
+        pods.assertDeliverable(c);
         LocalDateTime now = LocalDateTime.now(clock);
         c.setDeliveredAt(now);
         if (c.getArrivedAtDestinationHubAt() != null) {
@@ -197,7 +225,9 @@ public class ConsignmentService {
             c.setDemurrageAmount(d.amount());
             log.info("CFR {} delivered with {} extra day(s) of demurrage: INR {}", cfrNo, d.extraDays(), d.amount());
         }
-        return move(c, ConsignmentStatus.DELIVERED);
+        c = move(c, ConsignmentStatus.DELIVERED);
+        trackingEvents.append(c, TrackingEventCode.DELIVERED, now, details);
+        return c;
     }
 
     @Transactional

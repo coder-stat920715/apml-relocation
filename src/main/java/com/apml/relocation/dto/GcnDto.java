@@ -32,7 +32,12 @@ public final class GcnDto {
             Map<PackingMaterial, @Min(1) Integer> packingMaterialsUsed,
             String ibaCode, String carriageActRegNo, String gstin, String sacCode) {}
 
-    public record DispatchRequest(String truckVehicleNo, String cubeNo, String sealNo) {}
+    /** digitalGcNo is optional: when omitted it is generated at dispatch (GC + city + FY + 5-digit sequence). */
+    public record DispatchRequest(String truckVehicleNo, String cubeNo, String sealNo, String digitalGcNo) {
+        public DispatchRequest(String truckVehicleNo, String cubeNo, String sealNo) {
+            this(truckVehicleNo, cubeNo, sealNo, null);
+        }
+    }
 
     public record Response(
             String cfrNo, Long gcnSerialNo, LocalDateTime gcnDate, String ibaCode, String carriageActRegNo, String gstin,
@@ -41,5 +46,5 @@ public final class GcnDto {
             Integer totalPackages, BigDecimal actualWeightKg, BigDecimal chargedWeightKg, BigDecimal lengthFt,
             BigDecimal breadthFt, BigDecimal heightFt, Map<PackingMaterial, Integer> packingMaterialsUsed,
             Map<PackingMaterial, Integer> returnableMaterialsDueSameDay, String truckVehicleNo, String cubeNo,
-            String sealNo, LocalDateTime dispatchedAt) {}
+            String sealNo, LocalDateTime dispatchedAt, String digitalGcNo) {}
 }

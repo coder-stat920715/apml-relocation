@@ -24,6 +24,7 @@ import com.apml.relocation.exception.ResourceNotFoundException;
 import com.apml.relocation.repository.ConsignmentRepository;
 import com.apml.relocation.repository.GoodsConsignmentNoteRepository;
 import com.apml.relocation.support.TestData;
+import com.apml.relocation.util.ReferenceNumberGenerator;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
@@ -45,15 +46,17 @@ class GcnServiceTest {
     @Mock GoodsConsignmentNoteRepository gcns;
     @Mock ConsignmentRepository consignments;
     @Mock PaymentService payments;
+    @Mock ReferenceNumberGenerator numbers;
 
     private GcnService service;
     private Consignment consignment;
 
     @BeforeEach
     void setUp() {
-        service = new GcnService(gcns, consignments, payments, TestData.clock());
+        service = new GcnService(gcns, consignments, payments, numbers, TestData.clock());
         useItems(TestData.item(1, ItemCategory.TWO_WHEELER, "5000", "5000"), TestData.item(2, ItemCategory.CARTON_BOX, "5000", "5000"));
         when(gcns.save(any(GoodsConsignmentNote.class))).thenAnswer(i -> i.getArgument(0));
+        when(numbers.digitalGcPrefix("Kolkata")).thenReturn("GCKOL2627");
     }
 
     private void useItems(com.apml.relocation.domain.model.SurveyItem... items) {
@@ -428,5 +431,69 @@ class GcnServiceTest {
         assertThat(violationsOf(g)).containsExactly("declaredGoodsValue is required under Section 11");
         g.setDeclaredGoodsValue(BigDecimal.ZERO);
         assertThat(violationsOf(g)).hasSize(1);
+    }
+
+    // ------------------------------------------------------------------ digital GC number
+
+    private static GcnDto.DispatchRequest digital(String number) {
+        return new GcnDto.DispatchRequest(null, null, null, number);
+    }
+
+    @Test
+    void digitalGcNumberIsGeneratedAtDispatchWhenNotSupplied() {
+        GoodsConsignmentNote g = existing();
+        service.applyDispatchDetails(consignment, null);
+        assertThat(g.getDigitalGcNo()).isEqualTo("GCKOL262700001");
+    }
+
+    @Test
+    void generatedDigitalGcNumberContinuesTheSequence() {
+        GoodsConsignmentNote g = existing();
+        GoodsConsignmentNote last = TestData.gcn(consignment);
+        last.setDigitalGcNo("GCKOL262708112");
+        when(gcns.findTopByDigitalGcNoStartingWithOrderByDigitalGcNoDesc("GCKOL2627")).thenReturn(Optional.of(last));
+        service.applyDispatchDetails(consignment, digital(" "));
+        assertThat(g.getDigitalGcNo()).isEqualTo("GCKOL262708113");
+    }
+
+    @Test
+    void assignedDigitalGcNumberIsKeptWhenNoneIsSupplied() {
+        GoodsConsignmentNote g = existing();
+        g.setDigitalGcNo("GCKOL262700005");
+        service.applyDispatchDetails(consignment, digital(null));
+        assertThat(g.getDigitalGcNo()).isEqualTo("GCKOL262700005");
+    }
+
+    @Test
+    void suppliedDigitalGcNumberIsNormalisedAndStored() {
+        GoodsConsignmentNote g = existing();
+        service.applyDispatchDetails(consignment, digital(" gckol 262708112 "));
+        assertThat(g.getDigitalGcNo()).isEqualTo("GCKOL262708112");
+    }
+
+    @Test
+    void malformedDigitalGcNumberIsRejected() {
+        existing();
+        GcnDto.DispatchRequest bad = digital("GC-123");
+        assertThrows(BusinessRuleException.class, () -> service.applyDispatchDetails(consignment, bad));
+    }
+
+    @Test
+    void resendingTheSameDigitalGcNumberIsHarmlessButChangingItIsNot() {
+        GoodsConsignmentNote g = existing();
+        g.setDigitalGcNo("GCKOL262708112");
+        when(gcns.existsByDigitalGcNo("GCKOL262708112")).thenReturn(true);
+        service.applyDispatchDetails(consignment, digital("GCKOL262708112"));
+        assertThat(g.getDigitalGcNo()).isEqualTo("GCKOL262708112");
+        GcnDto.DispatchRequest other = digital("GCKOL262708999");
+        assertThrows(BusinessRuleException.class, () -> service.applyDispatchDetails(consignment, other));
+    }
+
+    @Test
+    void digitalGcNumberMustBeUnique() {
+        existing();
+        when(gcns.existsByDigitalGcNo("GCKOL262708112")).thenReturn(true);
+        GcnDto.DispatchRequest taken = digital("GCKOL262708112");
+        assertThrows(DuplicateResourceException.class, () -> service.applyDispatchDetails(consignment, taken));
     }
 }

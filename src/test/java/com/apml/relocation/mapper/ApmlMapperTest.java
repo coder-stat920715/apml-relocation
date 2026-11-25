@@ -166,4 +166,55 @@ class ApmlMapperTest {
         assertThat(perItem.surveyItemId()).isEqualTo(1L);
         assertThat(perItem.itemDescription()).isEqualTo("Item 1");
     }
+
+    @Test
+    void gcnResponseCarriesTheDigitalGcNumber() {
+        GoodsConsignmentNote g = TestData.gcn(consignment);
+        g.setDigitalGcNo("GCKOL262708112");
+        assertThat(ApmlMapper.toResponse(g).digitalGcNo()).isEqualTo("GCKOL262708112");
+    }
+
+    @Test
+    void trackingEventMapping() {
+        com.apml.relocation.domain.model.TrackingEvent e = new com.apml.relocation.domain.model.TrackingEvent();
+        e.setId(5L);
+        e.setDigitalGcNo("GCKOL262708112");
+        e.setEventCode(com.apml.relocation.domain.enums.TrackingEventCode.ARRIVED_ORIGIN_HUB);
+        e.setMilestone(com.apml.relocation.domain.enums.TrackingMilestone.IN_TRANSIT_ROUTE);
+        e.setEventTimestamp(TestData.NOW);
+        e.setEventDate(TestData.NOW.toLocalDate());
+        e.setHubCity("KOLKATA HUB");
+        var response = ApmlMapper.toResponse(e);
+        assertThat(response.eventId()).isEqualTo(5L);
+        assertThat(response.hubCity()).isEqualTo("KOLKATA HUB");
+        assertThat(response.eventDate()).isEqualTo(TestData.NOW.toLocalDate());
+    }
+
+    @Test
+    void coordinatorPhoneNumbersAreAlwaysMasked() {
+        com.apml.relocation.domain.model.CoordinatorContact c = new com.apml.relocation.domain.model.CoordinatorContact();
+        c.setRole(com.apml.relocation.domain.enums.CoordinatorRole.ORIGIN_HUB_COORDINATOR);
+        c.setName("Rahul Ji");
+        c.setBranchCode("KOL");
+        c.setPhoneNumber("9000000001");
+        assertThat(ApmlMapper.toResponse(c).maskedPhoneNumber()).isEqualTo("******0001");
+        c.setPhoneNumber(null);
+        assertThat(ApmlMapper.toResponse(c).maskedPhoneNumber()).isNull();
+        assertThat(c.toString()).contains("Rahul Ji").doesNotContain("9000000001");
+    }
+
+    @Test
+    void podMapping() {
+        com.apml.relocation.domain.model.DeliveryPodRecord p = new com.apml.relocation.domain.model.DeliveryPodRecord();
+        p.setConsignment(consignment);
+        p.setOriginalRcVerified(true);
+        p.setConsigneeIdMaskedRef("XXXX-XXXX-9012");
+        p.setPodSignedBy("Souptik Tat");
+        p.setDamageNotedOnPod(true);
+        var response = ApmlMapper.toResponse(p);
+        assertThat(response.cfrNo()).isEqualTo(TestData.CFR);
+        assertThat(response.originalRcVerified()).isTrue();
+        assertThat(response.consigneeIdMaskedRef()).isEqualTo("XXXX-XXXX-9012");
+        assertThat(response.damageNotedOnPod()).isTrue();
+    }
 }

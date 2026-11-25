@@ -515,3 +515,14 @@ Once running, access the interactive **Swagger UI** at:
 | `POST` | `/api/v1/consignments/{cfrNo}/hub-arrival` | Log arrival at destination hub (starts 24h demurrage grace clock) |
 | `POST` | `/api/v1/consignments/{cfrNo}/deliver` | Verify payment receipts, settle demurrage & complete `DELIVERED` POD |
 | `POST` | `/api/v1/consignments/{cfrNo}/claims` | Lodge damage claim (enforces `12h` Vehicle / `72h` HHG window) |
+## Digital GC, tracking timeline, coordinators, POD (v1.2)
+- Four identifiers per move: `enquiryNo` -> `cfrNo` -> `gcnSerialNo` (physical book) -> `digitalGcNo` (assigned at line-haul dispatch,
+  `GC` + origin city + financial year + 5-digit sequence, e.g. `GCKOL262708112`; supply your own in the dispatch body or let it generate).
+- `GET /api/v1/tracking/lookup?reference=...` accepts any of the four and returns identifiers, shipment summary, receipts,
+  masked coordinators and the timeline. `GET /api/v1/tracking/{digitalGcNo}` returns the portal-style progress bar plus event table.
+- `POST /api/v1/tracking/{digitalGcNo}/events` records hub scans (append-only). `ARRIVED_DESTINATION_HUB` stamps the hub arrival
+  (demurrage grace); `DELIVERED` runs the payment + POD gate and opens the 12h vehicle / 72h household claim windows.
+- `POST/GET /api/v1/consignments/{cfrNo}/coordinators`: phone numbers are always returned masked.
+- `POST/GET /api/v1/consignments/{cfrNo}/pod` and `POST .../deliver`: delivery now REQUIRES a complete POD (the deliver body may carry it).
+  ID numbers are stored masked only (XXXX-XXXX-1234).
+- The seeded shipment is now IN_TRANSIT with digital GC `GCKOL262708112`, four tracking events dated 2026-11-24 and three coordinators.

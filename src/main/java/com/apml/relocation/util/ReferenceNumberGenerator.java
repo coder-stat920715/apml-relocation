@@ -17,6 +17,13 @@ public class ReferenceNumberGenerator {
 
     public String cfrNo(String originCity) { return "CFR" + cityCode(originCity) + suffix(); }
 
+    /** Digital GC prefix: GC + origin city code + financial year (FY 2026-27 -> 2627), e.g. GCKOL2627. */
+    public String digitalGcPrefix(String originCity) {
+        LocalDate today = LocalDate.now(clock);
+        int fyStart = today.getMonthValue() >= 4 ? today.getYear() : today.getYear() - 1;
+        return "GC" + cityCode(originCity) + String.format("%02d%02d", fyStart % 100, (fyStart + 1) % 100);
+    }
+
     public String receiptNo() { return "ARVWB" + suffix(); }
 
     private String suffix() {

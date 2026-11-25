@@ -12,6 +12,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.MapKeyEnumerated;
@@ -27,7 +28,8 @@ import lombok.Setter;
 
 /** Goods Consignment Note / Lorry Receipt, issued after packing at the godown (separate from the CFR quotation). */
 @Entity
-@Table(name = "goods_consignment_note")
+@Table(name = "goods_consignment_note",
+        indexes = @Index(name = "idx_gcn_digital_gc_no", columnList = "digital_gc_no"))
 @Getter
 @Setter
 @NoArgsConstructor
@@ -90,4 +92,8 @@ public class GoodsConsignmentNote extends AuditableEntity {
     private String cubeNo;
     private String sealNo;
     private LocalDateTime dispatchedAt;
+
+    /** ERP docket number, assigned only when the shipment is manifested onto a line-haul vehicle. */
+    @Column(name = "digital_gc_no", unique = true, length = 20)
+    private String digitalGcNo;
 }

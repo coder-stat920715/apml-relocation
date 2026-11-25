@@ -23,7 +23,8 @@ import org.junit.jupiter.api.Test;
 class DtoAndUtilityClassesTest {
 
     private static final List<Class<?>> HOLDERS = List.of(EnquiryDto.class, ConsignmentDto.class, PaymentDto.class,
-            ComplianceDto.class, TransitDto.class, GcnDto.class, MediaDto.class);
+            ComplianceDto.class, TransitDto.class, GcnDto.class, MediaDto.class, TrackingDto.class, PodDto.class,
+            CoordinatorDto.class);
 
     private static Object sample(Class<?> type) {
         Object value;

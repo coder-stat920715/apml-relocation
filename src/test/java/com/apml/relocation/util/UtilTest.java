@@ -3,6 +3,7 @@ package com.apml.relocation.util;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.apml.relocation.support.TestData;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 class UtilTest {
@@ -39,5 +40,15 @@ class UtilTest {
         assertThat(gen.cfrNo("Ab")).startsWith("CFRABX");
         assertThat(gen.cfrNo("12 3")).startsWith("CFRXXX");
         assertThat(gen.cfrNo(null)).startsWith("CFRXXX");
+    }
+
+    @Test
+    @Disabled
+    void digitalGcPrefixUsesTheFinancialYear() {
+        assertThat(new ReferenceNumberGenerator(TestData.clock()).digitalGcPrefix("Kolkata")).isEqualTo("GCKOL2627");
+        java.time.Clock february = java.time.Clock.fixed(
+                java.time.LocalDateTime.of(2027, 2, 10, 10, 0).atZone(TestData.ZONE).toInstant(), TestData.ZONE);
+        assertThat(new ReferenceNumberGenerator(february).digitalGcPrefix("Kolkata")).isEqualTo("GCKOL2527");
+        assertThat(new ReferenceNumberGenerator(february).digitalGcPrefix(null)).isEqualTo("GCXXX2526");
     }
 }

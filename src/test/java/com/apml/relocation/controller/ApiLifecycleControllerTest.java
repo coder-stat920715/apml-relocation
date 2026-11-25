@@ -136,7 +136,11 @@ class ApiLifecycleControllerTest {
         send(post(base + "/media"), "{\"stage\":\"UNPACKED_AT_DELIVERY\",\"fileReference\":\"s3://x/unpacked.jpg\","
                 + "\"surveyItemId\":" + bikeId + "}").andExpect(status().isCreated());
         mvc.perform(get(base + "/media")).andExpect(jsonPath("$", hasSize(1)));
-        mvc.perform(post(base + "/deliver")).andExpect(jsonPath("$.status").value("DELIVERED"))
+        send(post(base + "/deliver"), "{\"originalRcVerified\":true,\"originalInsuranceVerified\":true,"
+                + "\"originalPucVerified\":true,\"consigneeIdVerified\":true,\"consigneeIdReference\":\"123456789012\","
+                + "\"paymentReceiptsVerified\":true,\"unpackedAndInspectedBeforeSignOff\":true,"
+                + "\"podSignedBy\":\"Lifecycle Customer\",\"damageNotedOnPod\":false}")
+                .andExpect(jsonPath("$.status").value("DELIVERED"))
                 .andExpect(jsonPath("$.demurrageAmount").value(0.0));
 
         // ---- claim and closure

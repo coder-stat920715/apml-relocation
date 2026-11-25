@@ -15,6 +15,7 @@ import com.apml.relocation.exception.DuplicateResourceException;
 import com.apml.relocation.exception.ResourceNotFoundException;
 import com.apml.relocation.repository.ConsignmentRepository;
 import com.apml.relocation.repository.GoodsConsignmentNoteRepository;
+import com.apml.relocation.util.ReferenceNumberGenerator;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -33,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class GcnService {
 
     private static final long FIRST_SERIAL_NO = 1354001L;
+    private static final Pattern DIGITAL_GC_NO = Pattern.compile("^GC[A-Z]{3}\\d{9}$");
     private static final Pattern TRUCK_NO = Pattern.compile("^[A-Z]{2}\\d{1,2}[A-Z]{0,3}\\d{4}$");
     private static final Set<ConsignmentStatus> ISSUABLE =
             Set.of(ConsignmentStatus.BOOKING_CONFIRMED, ConsignmentStatus.DOCUMENTS_VERIFIED, ConsignmentStatus.READY_FOR_LOADING);
@@ -40,6 +42,7 @@ public class GcnService {
     private final GoodsConsignmentNoteRepository gcns;
     private final ConsignmentRepository consignments;
     private final PaymentService payments;
+    private final ReferenceNumberGenerator numbers;
     private final Clock clock;
 
     @Transactional(readOnly = true)
@@ -124,6 +127,7 @@ public class GcnService {
             if (d.sealNo() != null && !d.sealNo().isBlank()) g.setSealNo(d.sealNo().trim());
             if (d.cubeNo() != null && !d.cubeNo().isBlank()) g.setCubeNo(d.cubeNo().trim());
         }
+        assignDigitalGcNo(g, d == null ? null : d.digitalGcNo());
         return gcns.save(g);
     }
 
@@ -194,6 +198,32 @@ public class GcnService {
             }
             g.setLiabilitySection(LiabilitySection.SECTION_10_LIMITED_LIABILITY);
             if (declared != null) g.setDeclaredGoodsValue(declared);
+        }
+    }
+
+    /** Keeps an already assigned number, validates a supplied one, or generates GC + city + FY + 5-digit sequence. */
+    private void assignDigitalGcNo(GoodsConsignmentNote g, String requested) {
+        if (requested != null && !requested.isBlank()) {
+            String no = requested.replaceAll("\\s", "").toUpperCase();
+            if (!DIGITAL_GC_NO.matcher(no).matches()) {
+                throw new BusinessRuleException("Invalid digital GC number: " + requested);
+            }
+            if (no.equals(g.getDigitalGcNo())) {
+                return;
+            }
+            if (g.getDigitalGcNo() != null) {
+                throw new BusinessRuleException("Digital GC number cannot be changed once assigned");
+            }
+            if (gcns.existsByDigitalGcNo(no)) {
+                throw new DuplicateResourceException("Digital GC number already used: " + no);
+            }
+            g.setDigitalGcNo(no);
+        } else if (g.getDigitalGcNo() == null) {
+            String prefix = numbers.digitalGcPrefix(g.getConsignment().getEnquiry().getOriginCity());
+            long sequence = gcns.findTopByDigitalGcNoStartingWithOrderByDigitalGcNoDesc(prefix)
+                    .map(last -> Long.parseLong(last.getDigitalGcNo().substring(prefix.length())) + 1)
+                    .orElse(1L);
+            g.setDigitalGcNo(prefix + String.format("%05d", sequence));
         }
     }
 

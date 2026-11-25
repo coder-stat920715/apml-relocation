@@ -5,6 +5,7 @@ import com.apml.relocation.domain.model.Consignment;
 import com.apml.relocation.dto.ConsignmentDto;
 import com.apml.relocation.dto.GcnDto;
 import com.apml.relocation.dto.PaymentDto;
+import com.apml.relocation.dto.PodDto;
 import com.apml.relocation.mapper.ApmlMapper;
 import com.apml.relocation.service.ConsignmentService;
 import com.apml.relocation.service.PaymentService;
@@ -105,9 +106,10 @@ public class ConsignmentController {
     }
 
     @PostMapping("/{cfrNo}/deliver")
-    @Operation(summary = "IN_TRANSIT -> DELIVERED: requires full verified payment proof; computes demurrage after hub arrival; starts claim window")
-    public ConsignmentDto.Response deliver(@PathVariable String cfrNo) {
-        return view(service.deliver(cfrNo));
+    @Operation(summary = "IN_TRANSIT -> DELIVERED: requires full payment proof and a complete POD (optional body records it); computes demurrage, starts the claim window and appends the DELIVERED tracking event")
+    public ConsignmentDto.Response deliver(@PathVariable String cfrNo,
+                                           @Valid @RequestBody(required = false) PodDto.Request pod) {
+        return view(service.deliver(cfrNo, pod, null));
     }
 
     @PostMapping("/{cfrNo}/close")

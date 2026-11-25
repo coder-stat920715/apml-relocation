@@ -14,7 +14,13 @@ import com.apml.relocation.domain.enums.PackingMaterial;
 import com.apml.relocation.domain.model.GoodsConsignmentNote;
 import com.apml.relocation.domain.model.InspectionMedia;
 import com.apml.relocation.dto.AddressDto;
+import com.apml.relocation.domain.model.CoordinatorContact;
+import com.apml.relocation.domain.model.DeliveryPodRecord;
+import com.apml.relocation.domain.model.TrackingEvent;
 import com.apml.relocation.dto.ComplianceDto;
+import com.apml.relocation.dto.CoordinatorDto;
+import com.apml.relocation.dto.PodDto;
+import com.apml.relocation.dto.TrackingDto;
 import com.apml.relocation.dto.GcnDto;
 import com.apml.relocation.dto.MediaDto;
 import com.apml.relocation.dto.ConsignmentDto;
@@ -94,12 +100,31 @@ public final class ApmlMapper {
                 g.getDeclaredGoodsValue(), g.getDeliveryMode(), g.getUnloadingBy(), g.getPaymentBillingType(),
                 g.getTotalPackages(), g.getActualWeightKg(), g.getChargedWeightKg(), g.getLengthFt(), g.getBreadthFt(),
                 g.getHeightFt(), new LinkedHashMap<>(g.getPackingMaterialsUsed()), returnable, g.getTruckVehicleNo(),
-                g.getCubeNo(), g.getSealNo(), g.getDispatchedAt());
+                g.getCubeNo(), g.getSealNo(), g.getDispatchedAt(), g.getDigitalGcNo());
     }
 
     public static MediaDto.Response toResponse(InspectionMedia m) {
         return new MediaDto.Response(m.getId(), m.getStage(), m.getSurveyItem() == null ? null : m.getSurveyItem().getId(),
                 m.getSurveyItem() == null ? null : m.getSurveyItem().getDescription(), m.getFileReference(),
                 m.getCapturedAt(), m.getRemarks());
+    }
+
+    public static TrackingDto.EventResponse toResponse(TrackingEvent e) {
+        return new TrackingDto.EventResponse(e.getId(), e.getDigitalGcNo(), e.getMilestone(), e.getEventCode(),
+                e.getEventDate(), e.getEventTimestamp(), e.getHubCity(), e.getEventDescription(), e.getTruckVehicleNo(),
+                e.getRecordedByAgentId());
+    }
+
+    /** Phone numbers are always masked; no caller is authenticated as hub staff. */
+    public static CoordinatorDto.Response toResponse(CoordinatorContact c) {
+        return new CoordinatorDto.Response(c.getRole(), c.getName(), c.getBranchCode(), MaskingUtil.mask(c.getPhoneNumber()),
+                c.getAssignedAt());
+    }
+
+    public static PodDto.Response toResponse(DeliveryPodRecord p) {
+        return new PodDto.Response(p.getConsignment().getCfrNo(), p.isOriginalRcVerified(), p.isOriginalInsuranceVerified(),
+                p.isOriginalPucVerified(), p.isConsigneeIdVerified(), p.getConsigneeIdMaskedRef(),
+                p.isPaymentReceiptsVerified(), p.isUnpackedAndInspectedBeforeSignOff(), p.getPodSignedBy(),
+                p.getPodSignedAt(), p.getDeliveryRemarks(), p.isDamageNotedOnPod());
     }
 }

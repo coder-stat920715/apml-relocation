@@ -9,4 +9,8 @@ public interface GoodsConsignmentNoteRepository extends JpaRepository<GoodsConsi
     Optional<GoodsConsignmentNote> findByConsignment(Consignment consignment);
     boolean existsByGcnSerialNo(Long gcnSerialNo);
     Optional<GoodsConsignmentNote> findTopByOrderByGcnSerialNoDesc();
+    Optional<GoodsConsignmentNote> findByGcnSerialNo(Long gcnSerialNo);
+    Optional<GoodsConsignmentNote> findByDigitalGcNo(String digitalGcNo);
+    boolean existsByDigitalGcNo(String digitalGcNo);
+    Optional<GoodsConsignmentNote> findTopByDigitalGcNoStartingWithOrderByDigitalGcNoDesc(String prefix);
 }

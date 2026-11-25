@@ -1,6 +1,7 @@
 package com.apml.relocation.seed;
 
 import com.apml.relocation.domain.enums.DeliveryMode;
+import com.apml.relocation.domain.enums.CoordinatorRole;
 import com.apml.relocation.domain.enums.ItemCategory;
 import com.apml.relocation.domain.enums.KycType;
 import com.apml.relocation.domain.enums.MediaStage;
@@ -8,6 +9,7 @@ import com.apml.relocation.domain.enums.MovementType;
 import com.apml.relocation.domain.enums.PackingMaterial;
 import com.apml.relocation.domain.enums.PaymentBillingType;
 import com.apml.relocation.domain.enums.PaymentMode;
+import com.apml.relocation.domain.enums.TrackingEventCode;
 import com.apml.relocation.domain.enums.UnloadingBy;
 import com.apml.relocation.domain.model.ArticleLine;
 import com.apml.relocation.domain.model.Consignment;
@@ -17,8 +19,11 @@ import com.apml.relocation.dto.ConsignmentDto;
 import com.apml.relocation.dto.EnquiryDto;
 import com.apml.relocation.dto.GcnDto;
 import com.apml.relocation.dto.MediaDto;
+import com.apml.relocation.dto.TrackingDto;
 import com.apml.relocation.repository.ConsignmentRepository;
 import com.apml.relocation.service.ComplianceService;
+import com.apml.relocation.service.CoordinatorService;
+import com.apml.relocation.service.TrackingService;
 import com.apml.relocation.service.ConsignmentService;
 import com.apml.relocation.service.EnquiryService;
 import com.apml.relocation.service.GcnService;
@@ -27,6 +32,8 @@ import com.apml.relocation.service.PaymentService;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -38,8 +45,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * Sample scenario: Souptik Tat, Dhakuria (Kolkata) -> Zolo Lakeview PG, Gowlidoddy (Hyderabad).
- * The consignment is walked to READY_FOR_LOADING with two receipts (INR 700 + INR 6,300 = INR 7,000) and GCN S.No. 1354001,
- * so it can be dispatched via PATCH /api/v1/consignments/CFRKOL262706738/dispatch.
+ * The consignment is walked to IN_TRANSIT with two receipts (INR 700 + INR 6,300 = INR 7,000), GCN S.No. 1354001, digital GC no.,
+ * so it is trackable through GET /api/v1/tracking/lookup?reference=GCKOL262708112.
  */
 @Component
 @ConditionalOnProperty(name = "apml.seed-enabled", havingValue = "true")
@@ -52,6 +59,8 @@ public class DataSeeder implements CommandLineRunner {
     public static final String RECEIPT_1 = "ARVWB262707169";
     public static final String RECEIPT_2 = "ARVWB262707202";
     public static final long GCN_SERIAL_NO = 1354001L;
+    public static final String DIGITAL_GC_NO = "GCKOL262708112";
+    private static final String BOOKING_AGENT = "APM11879";
 
     private final ConsignmentRepository consignments;
     private final EnquiryService enquiries;
@@ -60,6 +69,8 @@ public class DataSeeder implements CommandLineRunner {
     private final ComplianceService compliance;
     private final GcnService gcnService;
     private final MediaService mediaService;
+    private final CoordinatorService coordinators;
+    private final TrackingService tracking;
     private final Clock clock;
 
     @Override
@@ -122,6 +133,29 @@ public class DataSeeder implements CommandLineRunner {
         mediaService.add(CFR_NO, new MediaDto.Request(MediaStage.PACKED_AT_GODOWN, "seed://packed/package-1-of-2.jpg",
                 null, null, "Both packages at godown"));
 
-        log.info("Seeded {}: READY_FOR_LOADING, receipts {} + {} = INR 7000, GCN S.No. {}", CFR_NO, RECEIPT_1, RECEIPT_2, GCN_SERIAL_NO);
+        coordinators.assign(CFR_NO, CoordinatorRole.BOOKING_AGENT, BOOKING_AGENT, "KOL", null);
+        coordinators.assign(CFR_NO, CoordinatorRole.ORIGIN_HUB_COORDINATOR, "Rahul Ji", "KOL", "9000000001");
+        coordinators.assign(CFR_NO, CoordinatorRole.ORIGIN_HUB_COORDINATOR, "Ashok Sharma Ji", "KOL", "9000000002");
+
+        // Manifest onto the line-haul vehicle: this is where the digital GC number is assigned.
+        consignmentService.dispatch(CFR_NO, new GcnDto.DispatchRequest("WB03D1234", null, "SEAL-1354001", DIGITAL_GC_NO));
+
+        scan(TrackingEventCode.BOOKED_AT_ORIGIN, at(8, 30), "KOLKATA", "Consignment Booked at KOLKATTA", null);
+        scan(TrackingEventCode.EN_ROUTE_ORIGIN_HUB, at(10, 15), "KOLKATA", "On the way KOLKATTA To KOLKATTA HUB", null);
+        scan(TrackingEventCode.ARRIVED_ORIGIN_HUB, at(13, 40), "KOLKATA HUB", "Arrived at KOLKATTA HUB", null);
+        scan(TrackingEventCode.IN_TRANSIT_LINE_HAUL, at(19, 20), "KOLKATA HUB", "On the way KOLKATTA HUB To HYDERABAD HUB",
+                "WB03D1234");
+
+        log.info("Seeded {}: IN_TRANSIT, receipts {} + {} = INR 7000, GCN S.No. {}, digital GC {}",
+                CFR_NO, RECEIPT_1, RECEIPT_2, GCN_SERIAL_NO, DIGITAL_GC_NO);
+    }
+
+    /** Portal timeline day of the sample shipment; never later than "now" so the scan is always accepted. */
+    private LocalDateTime at(int hour, int minute) {
+        return Collections.min(List.of(LocalDateTime.of(2026, 11, 24, hour, minute), LocalDateTime.now(clock)));
+    }
+
+    private void scan(TrackingEventCode code, LocalDateTime when, String hub, String description, String truck) {
+        tracking.record(DIGITAL_GC_NO, new TrackingDto.EventRequest(code, when, hub, description, truck, BOOKING_AGENT));
     }
 }

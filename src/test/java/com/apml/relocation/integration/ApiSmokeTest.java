@@ -29,6 +29,9 @@ class ApiSmokeTest {
 
     private static final String SEEDED = "/api/v1/consignments/CFRKOL262706738";
     private static final String PROBLEMS = "https://apml.example.com/problems/";
+    private static final String POD_JSON = "{\"originalRcVerified\":true,\"originalInsuranceVerified\":true,"
+            + "\"originalPucVerified\":true,\"consigneeIdVerified\":true,\"paymentReceiptsVerified\":true,"
+            + "\"unpackedAndInspectedBeforeSignOff\":true,\"podSignedBy\":\"Souptik Tat\"}";
 
     @Autowired WebApplicationContext context;
     @Autowired ScenarioSupport scenarios;
@@ -42,10 +45,10 @@ class ApiSmokeTest {
     // ------------------------------------------------------------------ seeded data
 
     @Test
-    void seededConsignmentIsReadyForLoadingAndFullyPaid() throws Exception {
+    void seededConsignmentIsInTransitAndFullyPaid() throws Exception {
         mvc.perform(get(SEEDED))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("READY_FOR_LOADING"))
+                .andExpect(jsonPath("$.status").value("IN_TRANSIT"))
                 .andExpect(jsonPath("$.totalCft").value(40.97))
                 .andExpect(jsonPath("$.fovChargeAmount").value(225.0))
                 .andExpect(jsonPath("$.totalPayableAmount").value(7000.0))
@@ -77,6 +80,7 @@ class ApiSmokeTest {
                 .andExpect(jsonPath("$.declaredGoodsValue").value(10000.0))
                 .andExpect(jsonPath("$.deliveryMode").value("DOOR_DELIVERY"))
                 .andExpect(jsonPath("$.paymentBillingType").value("PAID"))
+                .andExpect(jsonPath("$.digitalGcNo").value("GCKOL262708112"))
                 .andExpect(jsonPath("$.totalPackages").value(2))
                 .andExpect(jsonPath("$.actualWeightKg").value(44.0))
                 .andExpect(jsonPath("$.returnableMaterialsDueSameDay.HYGIENE_PAD").value(1));
@@ -105,21 +109,32 @@ class ApiSmokeTest {
 
     @Test
     void dispatchWithoutTruckAndSealIsRejected_forBothPatchAndLegacyPost() throws Exception {
-        mvc.perform(patch(SEEDED + "/dispatch").contentType(MediaType.APPLICATION_JSON).content("{}"))
+        String base = "/api/v1/consignments/" + scenarios.readyWithGcn();
+        mvc.perform(patch(base + "/dispatch").contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().is(422))
                 .andExpect(content().contentTypeCompatibleWith("application/problem+json"))
                 .andExpect(jsonPath("$.violations", hasItems("truckVehicleNo is required", "sealNo is required")));
-        mvc.perform(post(SEEDED + "/dispatch"))
+        mvc.perform(post(base + "/dispatch"))
                 .andExpect(status().is(422))
                 .andExpect(jsonPath("$.type").value(PROBLEMS + "compliance-violation"));
-        mvc.perform(get(SEEDED)).andExpect(jsonPath("$.status").value("READY_FOR_LOADING"));
+        mvc.perform(get(base)).andExpect(jsonPath("$.status").value("READY_FOR_LOADING"));
     }
 
     @Test
     void deliverBeforeDispatchIsAStateConflict() throws Exception {
-        mvc.perform(post(SEEDED + "/deliver"))
+        String base = "/api/v1/consignments/" + scenarios.readyWithGcn();
+        mvc.perform(post(base + "/deliver").contentType(MediaType.APPLICATION_JSON).content(POD_JSON))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.type").value(PROBLEMS + "invalid-state-transition"));
+    }
+
+    @Test
+    void deliverWithoutAPodIsRejectedWithViolations() throws Exception {
+        String base = "/api/v1/consignments/" + scenarios.inTransit();
+        mvc.perform(post(base + "/deliver"))
+                .andExpect(status().is(422))
+                .andExpect(jsonPath("$.violations", hasItem("A delivery POD record is required before delivery")));
+        mvc.perform(get(base)).andExpect(jsonPath("$.status").value("IN_TRANSIT"));
     }
 
     @Test
@@ -142,7 +157,7 @@ class ApiSmokeTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.arrivedAtDestinationHubAt").exists());
 
-        mvc.perform(post(base + "/deliver"))
+        mvc.perform(post(base + "/deliver").contentType(MediaType.APPLICATION_JSON).content(POD_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("DELIVERED"))
                 .andExpect(jsonPath("$.demurrageDays").value(3))

@@ -27,9 +27,11 @@ import com.apml.relocation.exception.InsufficientPaymentException;
 import com.apml.relocation.service.ComplianceService;
 import com.apml.relocation.service.ConsignmentService;
 import com.apml.relocation.service.EnquiryService;
+import com.apml.relocation.service.DeliveryPodService;
 import com.apml.relocation.service.GcnService;
 import com.apml.relocation.service.MediaService;
 import com.apml.relocation.service.PaymentService;
+import com.apml.relocation.support.TestData;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -56,6 +58,7 @@ class GcnDispatchDeliveryTest {
     @Autowired GcnService gcns;
     @Autowired MediaService media;
     @Autowired Clock clock;
+    @Autowired DeliveryPodService pods;
 
     // ------------------------------------------------------------------ helpers
 
@@ -255,6 +258,7 @@ class GcnDispatchDeliveryTest {
         consignments.recordHubArrival(cfr, LocalDateTime.now(clock).minusDays(4));
         assertThrows(BusinessRuleException.class, () -> consignments.recordHubArrival(cfr, null));
 
+        pods.record(cfr, TestData.completePod());
         Consignment delivered = consignments.deliver(cfr);
         assertThat(delivered.getStatus()).isEqualTo(ConsignmentStatus.DELIVERED);
         assertThat(delivered.getDemurrageDays()).isEqualTo(3);
@@ -269,6 +273,7 @@ class GcnDispatchDeliveryTest {
         gcns.issue(cfr, gcnRequest(null, DeliveryMode.DOOR_DELIVERY));
         consignments.dispatch(cfr, TRUCK);
         consignments.recordHubArrival(cfr, null);
+        pods.record(cfr, TestData.completePod());
         assertThat(consignments.deliver(cfr).getDemurrageAmount()).isEqualByComparingTo("0");
     }
 
